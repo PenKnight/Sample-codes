@@ -1,0 +1,356 @@
+‘This is a sample code that is used in my spreadsheet to convert VBA text format to HTML text format for the purpose of creating HTML emails in outlook. 
+‘Please view the code in Notepad ++ with language VB.
+‘limitation of the IDE and language required work arounds which make the code a little less elegant that otherwise if done in VB .net
+
+Type struc
+    text As String
+    position As Integer
+    length As Integer
+    colour As Long
+    bold As Boolean
+    italics As Boolean
+    size As Integer
+    underline As Boolean
+    fontname As String
+End Type
+
+Function linecovertor(Line As Range, lineformat As String, storecode As String, _
+        Optional destinationcell As Range) As String
+
+'this function takes a line and coverts it to vba or html format while getting rid of the special commands
+    Dim AA(100) As struc
+    Dim index As Integer
+    Dim position(2) As Integer
+    Dim stringlength As Integer
+    Dim resultsearchtext As String
+    Dim tpstring(10) As String 'temp strings
+    Dim underlinecheck As Boolean
+    Dim vbatemprange As Range
+   
+    Set vbatemprange = Worksheets("Callback").Range("B3")
+    
+    ' finding all the positions
+    index = 1
+    AA(1).text = Mid(Line.value, 1, 1)
+    AA(1).length = 1
+    AA(1).italics = Line.Characters(start:=1, length:=1).Font.Italic
+    AA(1).bold = Line.Characters(start:=1, length:=1).Font.bold
+    AA(1).colour = Line.Characters(start:=1, length:=1).Font.color
+    AA(1).size = Line.Characters(start:=1, length:=1).Font.size
+    AA(1).fontname = Line.Characters(start:=1, length:=1).Font.name
+    If Line.Characters(start:=1, length:=1).Font.underline = True Then
+        AA(1).underline = True
+    Else
+        AA(1).underline = False
+    End If
+    AA(1).fontname = Line.Characters(start:=1, length:=1).Font.name
+    For i = 2 To Len(Line.value)
+        With Line.Characters(start:=i, length:=1).Font
+            
+            'underlinecheck - because it it dam annoying with it's null errors
+            If .underline > 0 Then
+                underlinecheck = True
+            Else
+                underlinecheck = False
+            End If
+            
+            If (AA(index).italics <> .Italic Or AA(index).bold <> .bold Or AA(index).colour <> .color Or _
+               AA(index).size <> .size Or AA(index).underline <> underlinecheck Or AA(index).fontname <> .name) _
+               And Mid(Line.value, i, 1) <> " " Then ' spaces have no format so join with other text
+                index = index + 1
+                AA(index).italics = .Italic
+                AA(index).bold = .bold
+                AA(index).colour = .color
+                AA(index).text = Mid(Line.value, i, 1)
+                AA(index).size = .size
+                AA(index).fontname = .name
+                If .underline > 0 Then
+                    AA(index).underline = True
+                Else
+                    AA(index).underline = False
+                End If
+            Else
+                AA(index).text = AA(index).text + Mid(Line.value, i, 1)
+            End If
+        End With
+    Next i
+    
+    'replacing all the special text commands
+    For i = 1 To index ' looping through all the store indexes
+        For j = 1 To Len(AA(i).text) 'looping through all the characters in the string
+        position(1) = InStr(1, AA(i).text, "&&", vbBinaryCompare) + 2
+        position(2) = InStr(position(1), AA(i).text, "&&", vbBinaryCompare) - 1
+        If position(1) > 2 And position(2) > position(1) Then
+            stringlength = position(2) - position(1) + 1
+            resultsearchtext = Mid(AA(i).text, position(1), stringlength) ' temporay using this variable
+            resultsearchtext = resulttextfinder(resultsearchtext, storecode)
+            AA(i).text = Mid(AA(i).text, 1, position(1) - 3) + resultsearchtext + Mid(AA(i).text, position(2) + 3)
+            'vbatemprange.Value = Mid(AA(i).text, 1, position(1) - 3) + resultsearchtext + Mid(AA(i).text, position(2) + 2)
+            'i = i + Len(resultsearchtext)
+            j = position(2) + 2
+        Else
+            Exit For ' nothing else to look for.
+        End If
+        Next j
+    Next i
+    
+    ' recreating the string in the appropiate format
+    If lineformat = "VBA" Then
+        'will have to send back a address for it to be copied.
+        'putting the text into the cell
+        vbatemprange.ClearContents
+        For i = 1 To index
+            AA(i).position = Len(vbatemprange.value) + 1
+            vbatemprange.value = vbatemprange.value + AA(i).text
+        Next i
+        'putting the formatting into the cell
+        For i = 1 To index
+            With vbatemprange.Characters(start:=AA(i).position, length:=Len(AA(i).text)).Font
+                .Italic = AA(i).italics
+                .bold = AA(i).bold
+                .color = AA(i).colour
+                .size = AA(i).size
+                .underline = AA(i).underline
+                .name = AA(i).fontname
+            End With
+        Next i
+        
+        'linecovertor = vbatemprange.address
+        vbatemprange.Copy Destination:=destinationcell
+        Exit Function
+        
+    ElseIf lineformat = "HTML" Then
+        vbatemprange.ClearContents
+        
+        'need to convert this to css formatting
+        '<p style='font-size:11pt;font-family:Calibri;'>girl look at that body</p>;
+        '<p style='font:italic bold 12px/30px Georgia,serif;'>THIS IS A TRIUMPH </p>
+        '<p style='font-size: 15px;font-family: verdana; font-weight: bold; font-style: italic;
+        'background: #ffffcc; color: green; line-height: 18px;'>How now brown cow</p>
+        For i = 1 To index
+            
+            tpstring(1) = "<span style='"
+            tpstring(2) = ""
+            tpstring(3) = "'>" + AA(i).text + "</span>"
+            tpstring(4) = ""
+            
+            If AA(i).italics = True Then
+                tpstring(2) = tpstring(2) + "font-style: italic;"
+            End If
+            If AA(i).bold = True Then
+                tpstring(2) = tpstring(2) + "font-weight: bold;"
+            End If
+            If AA(i).underline = True Then
+                tpstring(2) = tpstring(2) + "text-decoration:underline;"
+            End If
+
+            tpstring(2) = tpstring(2) + "font-family:" + AA(i).fontname + ";"
+            tpstring(2) = tpstring(2) + "font-size:" + CStr(AA(i).size) + "pt;"
+            tpstring(2) = tpstring(2) + "color:#" + RGBtoHEX(AA(i).colour) + ";"
+            
+            tpstring(4) = tpstring(1) + tpstring(2) + tpstring(3)
+            vbatemprange.value = vbatemprange.value + tpstring(4)
+        Next i
+        
+        linecovertor = vbatemprange.value
+    End If
+    
+End Function
+
+Function introtextselector(target As Range) As Integer
+
+'this function takes the templatecode number or string and returns the starting row number of the text
+'first , delete the cells
+'second, find the cells
+'third insert the cells
+    
+    Dim i, j As Integer
+    Dim startrng As Range
+    Dim endrng As Range
+    Dim refcolumnnumber As Integer
+    Dim ttffttff As String
+    
+    If target.value = "" Then
+        Exit Function
+    End If
+    
+    refcolumnnumber = target.column - 6
+     
+    With Worksheets("Callback")
+        i = target.row + 1
+        While .Cells(i, refcolumnnumber).value <> "Call back list" And i < 100
+            .Range(.Cells(i, refcolumnnumber), .Cells(i, refcolumnnumber + 6)).delete Shift:=xlUp
+        Wend
+    End With
+    
+    'search for the setting - this will avid hard setting it as i think it would change
+    
+    With Worksheets("Settings")
+        i = 20
+        'finding the starting point of the templates
+        While .Cells(i, 2).value <> "Template intro text" And i < 100
+            i = i + 1
+        Wend
+        'finding the correct template
+        While .Cells(i, 2).value <> target.value And i < 100
+            i = i + 1
+        Wend
+        'looping until template changes
+        j = target.row + 1
+        While .Cells(i, 2).value = target.value And i < 100
+            
+            Set startrng = Worksheets("Callback").Cells(j, refcolumnnumber)
+            Set endrng = Worksheets("Callback").Cells(j, refcolumnnumber + 6)
+            Worksheets("Callback").Range(startrng, endrng).Insert Shift:=xlDown
+            Worksheets("Callback").Range(startrng.Offset(-1, 0), endrng.Offset(-1, 0)).UnMerge
+            Worksheets("Callback").Range(startrng.Offset(-1, 0), endrng.Offset(-1, 0)).Style = "Normal"
+            If .Cells(i, 3).value <> "" Then
+                Call linecovertor(.Cells(i, 3), "VBA", storecodefinder(refcolumnnumber), startrng.Offset(-1, 0))
+                'Worksheets("Callback").Range("B3").Copy Destination:=startrng.Offset(-1, 0)
+            Else
+                'blank cell
+            End If
+            startrng.Offset(-1, 0).WrapText = False
+            j = j + 1
+            i = i + 1
+        Wend
+    End With
+
+End Function
+
+Function htmlintrotextcreator(refcolumnnumber As Integer) As String
+
+    Dim i As Integer
+    Dim refcell As Range
+    Dim storecode As String
+    Dim textstore As String
+
+    With Worksheets("Callback")
+        i = 5
+        While .Cells(i - 1, refcolumnnumber).value <> "Introduction section:" And i < 100
+            i = i + 1
+        Wend
+    End With
+    
+    If i > 100 Then
+        MsgBox ("error in searching for intro text, will not print one")
+        htmlintrotextcreator = ""
+        Exit Function
+    End If
+    
+    Set refcell = Worksheets("Callback").Cells(i, refcolumnnumber) ' this cell is one row above the "Call back list"
+    
+    i = 0
+    While refcell.Offset(i, 0).value <> "Call back list"
+        i = i + 1
+    Wend
+    storecode = refcell.Offset(i + 1, 2).value
+    
+    i = 0
+    textstore = ""
+    While refcell.Offset(i, 0).value <> "Call back list"
+        If refcell.Offset(i, 0).value <> "" Then
+            textstore = textstore + "<br>" + linecovertor(refcell.Offset(i, 0), "HTML", storecode)
+        Else
+            textstore = textstore + "<br>"
+        End If
+        i = i + 1
+    Wend
+    
+    htmlintrotextcreator = textstore
+End Function
+
+Function storecodefinder(refcolumnnumber As Integer) As String
+
+    Dim i As Integer
+    Dim refsheet As String
+    Dim storecellstring(2) As String
+    Dim searchstring(2) As String
+    Dim rng As Range
+    
+    Set rng = Worksheets("Callback").Cells(1, refcolumnnumber)
+    refsheet = "Callback"
+    storecellstring(1) = "Store:"
+    storecellstring(2) = "State:"
+    
+    While rng.Offset(i, 0).value <> storecellstring(1) And rng.Offset(i, 0).value <> storecellstring(2) And i < 50
+        i = i + 1
+    Wend
+    
+    If rng.Offset(i, 0).value = storecellstring(1) Then
+        storecodefinder = rng.Offset(i, 2).value
+    Else
+        storecodefinder = rng.Offset(i, 2).value + "_WH"
+    End If
+    
+End Function
+
+Function resulttextfinder(searchtext As String, storecode As String) As String
+    
+    'this fucntion takes the seatchtext ( the special text command ) and find the corresponding entry
+    Dim i, j As Integer
+    Dim refsheet As String
+    Dim refcell As String
+    Dim tstr As String
+    Dim tstr2 As String
+    Dim rng As Range
+    Dim loopbreaker As Boolean
+    
+    refsheet = "Lookup table"
+    refcell = "B5"
+    With Worksheets(refsheet).Range(refcell)
+    
+    'looping through the list looking for the right store row.
+        j = 0
+        loopbreak = False
+        While .Offset(j, 0).value <> "" And j < 100 And loopbreak = False
+            tstr = Lcase(.Offset(j, 0).value)
+            If tstr = Lcase(storecode) Then
+                loopbreak = True
+                j = j - 1 ' correction to right row number
+            End If
+            j = j + 1
+        Wend
+    'check to see that a store has been found
+        If loopbreak = False Then 'no store was found
+            MsgBox ("Incorrect storecode enetered, intro text cannot be created")
+            resulttextfinder = searchtext
+            Exit Function
+        End If
+        
+    'looping horizontally looking for the right column header
+        i = 0
+        loopbreak = False
+        While .Offset(-1, i).value <> "" And i < 100 And loopbreak = False
+            tstr = Lcase(.Offset(-1, i).value)
+            If tstr = Lcase(searchtext) Then
+                loopbreak = True
+                 i = i - 1
+            End If
+            i = i + 1
+        Wend
+    'check to see that a header has been found
+        If loopbreak = False Then 'no store was found
+            MsgBox ("Inccorect use of text command, please retry")
+            resulttextfinder = searchtext
+            Exit Function
+        End If
+    Set rng = .Offset(j, i)
+    End With
+    
+    resulttextfinder = rng.value
+
+End Function
+
+Function RGBtoHEX(colour As Long) As String
+
+    Dim strHexColour As String
+    'Dim red, green, blue As String
+
+    strHexColour = Right$("000000" & Hex(colour), 6)
+    'red = CLng("&H" & Right$(strHexColour, 2))
+    'green = CLng("&H" & Mid$(strHexColour, 3, 2))
+    'blue = CLng("&H" & Left$(strHexColour, 2))
+
+    RGBtoHEX = Mid(strHexColour, 5, 2) + Mid(strHexColour, 3, 2) + Mid(strHexColour, 1, 2)
+End Function
